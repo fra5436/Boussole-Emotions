@@ -1,3 +1,3 @@
 # Boussole des Emotions
 
-_Lien :_ https://fra5436.github.io/Boussole-Emotions/
+__Lien :__ https://fra5436.github.io/Boussole-Emotions/
