@@ -1,7 +1,7 @@
 /* Boussole des émotions — service worker
    Objectif : l'application démarre sans réseau, et sans jamais attendre le réseau.
    Pour publier une mise à jour, incrémenter VERSION. */
-const VERSION = "v4";
+const VERSION = "v5";
 const CACHE = "boussole-" + VERSION;
 
 const COQUILLE = [

@@ -177,7 +177,11 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent)}
 .chip[aria-pressed="true"]{color:var(--texte);border-color:currentColor}
 .chips-titre{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--texte-doux);margin:16px 0 0}
 
-.rappel{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--trait);border-radius:var(--r);padding:13px 14px;margin-bottom:16px}
+.rappel{background:var(--surface);border:1px solid var(--trait);border-radius:var(--r);padding:13px 14px;margin-bottom:16px}
+.rappel-tete{display:flex;gap:14px;align-items:flex-start}
+.rappel-aide{margin:6px 0 0;font-size:13px;color:var(--texte-doux)}
+.chip-sens{text-align:left;line-height:1.35}
+#f-sens-chips{margin-top:12px}
 .rappel .corps{flex:0 0 78px;width:78px}
 .rappel-txt{flex:1;min-width:0}
 .rappel-txt .label{margin-bottom:5px}
@@ -887,8 +891,8 @@ function blocHorsLigne(){
 
   if(HorsLigne.local){
     voyant = "attente";
-    titre = "Hors ligne : non disponible";
-    aide = "L'application est ouverte depuis un fichier local. Le mode hors ligne exige qu'elle soit servie par une adresse en HTTPS.";
+    titre = "Ouverte depuis un fichier local";
+    aide = "Tout fonctionne sans connexion, mais les saisies sont écrites dans le navigateur de CET ordinateur — pas sur le support depuis lequel l'application est lancée. Sur un poste partagé, exportez votre journal puis effacez les saisies avant de partir.";
   } else if(!e.supporte){
     voyant = "ko";
     titre = "Hors ligne : non pris en charge";
@@ -953,8 +957,9 @@ function ouvrirFormulaire(saisie){
   brouillon = saisie ? JSON.parse(JSON.stringify(saisie)) : {
     id: (crypto.randomUUID ? crypto.randomUUID() : "s" + Date.now() + Math.random().toString(16).slice(2)),
     ts: new Date().toISOString(),
-    emotion: null, nuance: "", situation: "", sensations: "", pensees: "", comportements: "", intensite: 5
+    emotion: null, nuance: "", situation: "", sensationsChoisies: [], sensations: "", pensees: "", comportements: "", intensite: 5
   };
+  if(!Array.isArray(brouillon.sensationsChoisies)) brouillon.sensationsChoisies = [];
   document.getElementById("form-titre").textContent = saisie ? "Modifier la saisie" : "Nouvelle saisie";
   rendreFormulaire();
   ouvrirFeuille("sheet-form");
@@ -1014,13 +1019,22 @@ function rendreFormulaire(){
       <p class="champ-aide">Ce que je perçois en moi, dans mon corps.</p>
       ${e ? `
         <div class="rappel">
-          <div class="corps">${schemaCorps(e, "form-" + e.id)}${legendeCarte("form-" + e.id)}</div>
-          <div class="rappel-txt">
-            <p class="label">Repères — ${echap(e.nom)}</p>
-            <ul>${e.sensations.slice(0,5).map(s => `<li>${echap(s)}</li>`).join("")}</ul>
+          <div class="rappel-tete">
+            <div class="corps">${schemaCorps(e, "form-" + e.id)}${legendeCarte("form-" + e.id)}</div>
+            <div class="rappel-txt">
+              <p class="label">Repères — ${echap(e.nom)}</p>
+              <p class="rappel-aide">Appuyez sur ce que vous ressentez pour l'ajouter.</p>
+            </div>
+          </div>
+          <div class="chips" id="f-sens-chips">
+            ${e.sensations.map(x => {
+              const pris = brouillon.sensationsChoisies.includes(x);
+              return `<button type="button" class="chip chip-sens" data-sens="${echap(x)}" aria-pressed="${pris}"
+                style="${pris ? `color:${surTexte(e.couleur)};border-color:${surTexte(e.couleur)}` : ""}">${echap(x)}</button>`;
+            }).join("")}
           </div>
         </div>` : ""}
-      <textarea id="f-sensations" placeholder="Ventre noué, respiration rapide…">${echap(brouillon.sensations)}</textarea>
+      <textarea id="f-sensations" placeholder="Autre chose que vous percevez, avec vos mots…">${echap(brouillon.sensations)}</textarea>
     </div>
 
     <div class="champ">
@@ -1062,9 +1076,21 @@ function rendreFormulaire(){
     b.addEventListener("click", () => {
       capter();
       const nouv = b.dataset.emo;
-      if(brouillon.emotion !== nouv){ brouillon.emotion = nouv; brouillon.nuance = ""; }
+      if(brouillon.emotion !== nouv){ brouillon.emotion = nouv; brouillon.nuance = ""; brouillon.sensationsChoisies = []; }
       rendreFormulaire();
       document.getElementById("f-nuances")?.scrollIntoView({ block:"nearest", behavior:"smooth" });
+    })
+  );
+
+  body.querySelectorAll("[data-sens]").forEach(b =>
+    b.addEventListener("click", () => {
+      capter();
+      const v = b.dataset.sens;
+      const i = brouillon.sensationsChoisies.indexOf(v);
+      if(i === -1) brouillon.sensationsChoisies.push(v);
+      else brouillon.sensationsChoisies.splice(i, 1);
+      rendreFormulaire();
+      document.getElementById("f-sens-chips")?.scrollIntoView({ block:"nearest", behavior:"smooth" });
     })
   );
 
@@ -1094,7 +1120,7 @@ function rendreFormulaire(){
 }
 
 function fermerFormulaire(){
-  const rempli = brouillon && (brouillon.emotion || brouillon.situation || brouillon.sensations || brouillon.pensees || brouillon.comportements);
+  const rempli = brouillon && (brouillon.emotion || brouillon.situation || brouillon.sensations || brouillon.pensees || brouillon.comportements || (brouillon.sensationsChoisies || []).length);
   if(rempli && !confirm("Fermer sans enregistrer ? La saisie en cours sera perdue.")) return;
   fermerFeuille("sheet-form");
 }
@@ -1109,6 +1135,19 @@ function ouvrirDetail(id, rafraichir){
   if(!s) return;
   idDetail = id;
   const e = emoParId(s.emotion) || { nom:"—", couleur:"#7C8896", zones:{} };
+  const blocSensations = (saisie, emo) => {
+    const choisies = Array.isArray(saisie.sensationsChoisies) ? saisie.sensationsChoisies : [];
+    const libre = saisie.sensations;
+    return `<div class="detail-bloc">
+      <p class="label">Sensations physiologiques</p>
+      <p class="champ-aide" style="margin:0 0 6px">Ce que je perçois en moi, dans mon corps</p>
+      ${choisies.length ? `<div class="mots" style="margin-bottom:${libre ? "10px" : "0"}">
+        ${choisies.map(x => `<span class="mot" style="border-color:${surTexte(emo.couleur)}">${echap(x)}</span>`).join("")}
+      </div>` : ""}
+      ${libre ? `<p>${echap(libre)}</p>` : (choisies.length ? "" : `<p class="vide-txt">Non renseigné</p>`)}
+    </div>`;
+  };
+
   const bloc = (titre, aide, txt) => `
     <div class="detail-bloc">
       <p class="label">${echap(titre)}</p>
@@ -1125,7 +1164,7 @@ function ouvrirDetail(id, rafraichir){
     ${s.nuance ? `<p style="margin:0 0 6px;font-family:var(--serif);font-size:17px;color:${surTexte(e.couleur)}">${echap(s.nuance)}</p>` : ""}
     <p class="detail-date">${echap(fmtJour(s.ts))} · ${echap(fmtHeure(s.ts))}${s.intensite != null ? ` · intensité ${s.intensite}/10` : ""}</p>
     ${bloc("Situation", "Ce qui se passe", s.situation)}
-    ${bloc("Sensations physiologiques", "Ce que je perçois en moi, dans mon corps", s.sensations)}
+    ${blocSensations(s, e)}
     ${bloc("Pensées", "Ce que je me dis dans ma tête sur ce qu'il se passe", s.pensees)}
     ${bloc("Comportements", "Ce que je fais", s.comportements)}
   `;
